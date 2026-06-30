@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "project": "AutoCare AI",
+  "language": "ru",
+  "last_updated": "2026-06-30",
+  "documents": [
+    {
+      "file": "contacts.md",
+      "title": "Контакты и график работы",
+      "domain": "contacts",
+      "doc_type": "reference",
+      "audience": "client",
+      "owner": "service_department",
+      "priority": 4,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    },
+    {
+      "file": "request_intake.md",
+      "title": "Правила приема обращений клиентов",
+      "domain": "request_intake",
+      "doc_type": "internal_process",
+      "audience": "assistant",
+      "owner": "service_department",
+      "priority": 5,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    },
+    {
+      "file": "warranty.md",
+      "title": "Гарантийные обращения",
+      "domain": "warranty",
+      "doc_type": "policy",
+      "audience": "client",
+      "owner": "warranty_department",
+      "priority": 5,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    },
+    {
+      "file": "service.md",
+      "title": "Сервисное обслуживание",
+      "domain": "service",
+      "doc_type": "process",
+      "audience": "client",
+      "owner": "service_department",
+      "priority": 5,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    },
+    {
+      "file": "maintenance.md",
+      "title": "Техническое обслуживание",
+      "domain": "maintenance",
+      "doc_type": "process",
+      "audience": "client",
+      "owner": "service_department",
+      "priority": 4,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    },
+    {
+      "file": "faq.md",
+      "title": "Часто задаваемые вопросы",
+      "domain": "faq",
+      "doc_type": "faq",
+      "audience": "client",
+      "owner": "service_department",
+      "priority": 3,
+      "status": "active",
+      "language": "ru",
+      "index": true
+    }
+  ]
+}
