@@ -1,4 +1,5 @@
 import hashlib
+from dataclasses import dataclass
 
 from openai import OpenAI
 
@@ -10,6 +11,12 @@ from src.sheets import load_service_topics
 from src.vector_store import search_relevant_chunks
 
 
+@dataclass
+class AnswerResult:
+    text: str
+    from_cache: bool
+
+
 def _system_prompt() -> str:
     return settings.prompt_file.read_text(encoding="utf-8")
 
@@ -19,7 +26,7 @@ def _cache_key(question: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-async def answer_question(question: str, user_id: int | None = None) -> str:
+async def answer_question(question: str, user_id: int | None = None) -> AnswerResult:
     dialog_context = dialog_memory.format_context(user_id)
     cache_source = f"{question}\n{dialog_context}" if dialog_context else question
     use_cache = not should_skip_cache(cache_source)
@@ -28,7 +35,7 @@ async def answer_question(question: str, user_id: int | None = None) -> str:
     if use_cache:
         cached = cache.get(key)
         if cached:
-            return cached
+            return AnswerResult(text=cached, from_cache=True)
 
     chunks = search_relevant_chunks(question)
     context = "\n\n".join(
@@ -69,4 +76,4 @@ async def answer_question(question: str, user_id: int | None = None) -> str:
     if use_cache:
         cache.set(key, answer)
 
-    return answer
+    return AnswerResult(text=answer, from_cache=False)

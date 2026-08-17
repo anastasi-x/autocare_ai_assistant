@@ -71,6 +71,11 @@ class Settings:
         "storage/dialog_context.json",
     )
     bot_log_file: Path = BASE_DIR / os.getenv("LOG_FILE", "storage/bot.log")
+    interaction_log_db_file: Path = BASE_DIR / os.getenv(
+        "INTERACTION_LOG_DB_FILE",
+        "storage/logs.db",
+    )
+    log_user_id_secret: str = os.getenv("LOG_USER_ID_SECRET", "")
 
     # Deprecated aliases kept for compatibility with the first scaffold.
     legacy_google_service_account_file: Path = BASE_DIR / os.getenv(
