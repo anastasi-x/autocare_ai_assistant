@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import re
 
 
@@ -39,3 +41,16 @@ def sanitize_for_memory(text: str) -> str:
     sanitized = PASSPORT_RE.sub("[паспортные данные скрыты]", sanitized)
     sanitized = BANK_RE.sub("[банковские данные скрыты]", sanitized)
     return sanitized.strip()
+
+
+def pseudonymize_user_id(user_id: int | None, secret: str) -> str:
+    if user_id is None:
+        return "anonymous"
+    if not secret:
+        raise ValueError("LOG_USER_ID_SECRET must not be empty")
+
+    return hmac.new(
+        key=secret.encode("utf-8"),
+        msg=str(user_id).encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()

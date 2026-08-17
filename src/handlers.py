@@ -1,14 +1,18 @@
+import logging
 import re
 from html import escape
+from time import perf_counter
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from src.cache import cache
 from src.config import settings
 from src.customer_parser import CustomerRequest, is_customer_request, parse_customer_request
+from src.database_logger import DatabaseLogger
 from src.dialog_memory import dialog_memory
+from src.privacy import pseudonymize_user_id, sanitize_for_memory
 from src.rag import answer_question
 from src.sheets import (
     _description_for_sheet,
@@ -19,6 +23,8 @@ from src.sheets import (
 )
 
 
+logger = logging.getLogger(__name__)
+database_logger = DatabaseLogger(settings.interaction_log_db_file)
 router = Router()
 MAX_ACTIVE_REQUESTS_PER_USER = 3
 PENDING_CANCEL_SELECTIONS: dict[int, list[dict[str, str]]] = {}
@@ -96,9 +102,56 @@ async def clear_memory(message: Message) -> None:
     )
 
 
+@router.message(Command("stats"))
+async def stats_command(message: Message) -> None:
+    if not _is_admin(message):
+        await _answer_html(message, "🔒 <b>Команда доступна только администратору.</b>")
+        return
+
+    try:
+        stats = database_logger.get_stats()
+    except Exception:
+        logger.exception("Failed to get AI interaction statistics")
+        await _answer_html(
+            message,
+            "⚠️ <b>Не удалось получить статистику.</b>\n\nПопробуйте позже.",
+        )
+        return
+
+    await _answer_html(
+        message,
+        "📊 <b>Статистика AI-взаимодействий</b>\n\n"
+        f"Всего запросов: {stats['total_interactions']}\n"
+        f"Из кеша: {stats['cache_hits']}\n"
+        f"Уникальных пользователей: {stats['unique_users']}\n"
+        f"Среднее время ответа: {stats['avg_response_time_ms']:.1f} мс",
+    )
+
+
+@router.message(Command("logs"))
+async def logs_command(message: Message) -> None:
+    if not _is_admin(message):
+        await _answer_html(message, "🔒 <b>Команда доступна только администратору.</b>")
+        return
+
+    try:
+        export_path = database_logger.export_to_csv()
+        await message.answer_document(
+            FSInputFile(export_path),
+            caption="📄 Экспорт AI-взаимодействий.",
+        )
+    except Exception:
+        logger.exception("Failed to export or send AI interaction logs")
+        await _answer_html(
+            message,
+            "⚠️ <b>Не удалось подготовить экспорт логов.</b>\n\nПопробуйте позже.",
+        )
+
+
 @router.message(F.text)
 async def handle_text(message: Message) -> None:
     text = message.text or ""
+    start_time = perf_counter()
     if _has_pending_cancel_selection(message) and text.strip().isdigit():
         await _handle_cancel_selection(message, int(text.strip()))
         return
@@ -139,18 +192,27 @@ async def handle_text(message: Message) -> None:
         return
 
     if _is_consultation_question(text, request):
-        answer = await answer_question(
+        result = await answer_question(
             text,
             user_id=message.from_user.id if message.from_user else None,
         )
         answer, reply_markup = _prepare_consultation_response(
-            _safe_html(answer),
+            _safe_html(result.text),
             text,
             request,
             message.from_user.id if message.from_user else None,
         )
         _remember(message, text, answer)
         await message.answer(answer, parse_mode="HTML", reply_markup=reply_markup)
+        if not text.lstrip().startswith("/"):
+            response_time_ms = int((perf_counter() - start_time) * 1000)
+            _log_ai_interaction(
+                message=message,
+                query=text,
+                response=answer,
+                from_cache=result.from_cache,
+                response_time_ms=response_time_ms,
+            )
         return
 
     if is_customer_request(text):
@@ -158,12 +220,22 @@ async def handle_text(message: Message) -> None:
         await _handle_customer_request(message, request)
         return
 
-    answer = await answer_question(
+    result = await answer_question(
         text,
         user_id=message.from_user.id if message.from_user else None,
     )
-    _remember(message, text, answer)
-    await _answer_html(message, _safe_html(answer))
+    _remember(message, text, result.text)
+    answer = _safe_html(result.text)
+    await _answer_html(message, answer)
+    if not text.lstrip().startswith("/"):
+        response_time_ms = int((perf_counter() - start_time) * 1000)
+        _log_ai_interaction(
+            message=message,
+            query=text,
+            response=answer,
+            from_cache=result.from_cache,
+            response_time_ms=response_time_ms,
+        )
 
 
 async def _handle_customer_request(message: Message, request: CustomerRequest) -> None:
@@ -1103,6 +1175,29 @@ def _remember(message: Message, user_text: str, assistant_text: str) -> None:
         user_text,
         assistant_text,
     )
+
+
+def _log_ai_interaction(
+    message: Message,
+    query: str,
+    response: str,
+    from_cache: bool,
+    response_time_ms: int,
+) -> None:
+    try:
+        database_logger.log_interaction(
+            query=sanitize_for_memory(query),
+            response=sanitize_for_memory(response),
+            source="telegram",
+            user_id=pseudonymize_user_id(
+                message.from_user.id if message.from_user else None,
+                settings.log_user_id_secret,
+            ),
+            from_cache=from_cache,
+            response_time_ms=response_time_ms,
+        )
+    except Exception:
+        logger.exception("Failed to write structured AI interaction log")
 
 
 def _is_admin(message: Message) -> bool:
